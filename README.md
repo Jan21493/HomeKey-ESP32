@@ -306,6 +306,79 @@ idf.py -p /dev/ttyUSB0 flash
 idf.py monitor
 ```
 
+## Build & Setup Notes for ESP32-S3
+
+Many ESP32-S3 development boards like the [YD-ESP32-S3 Core Board](https://github.com/Jan21493/YD-ESP32-S3/blob/main/README.md) or similar clones with a 16 MB XMC SPI flash chip (N16R8) may have a problem with the bootloader in combination with ESP-IDF v5.5. The ESP-IDF monitor shows constant reboots that include these messages:
+
+* **With XMC support enabled (`CONFIG_BOOTLOADER_FLASH_XMC_SUPPORT=y`):**
+  ```text
+  E (26) bootloader_flash: XMC flash startup fail
+  E (26) boot.esp32s3: failed when running XMC startup flow, reboot!
+  ```
+* **With XMC support disabled (`CONFIG_BOOTLOADER_FLASH_XMC_SUPPORT=n`):**
+  ```text
+  E (24) bootloader_flash: XMC chip detected (00207018) while support disabled.
+  E (24) boot.esp32s3: failed when running XMC startup flow, reboot!
+  ```
+
+The JEDEC ID of the 16MB XMC SPI flash chip is `0x00207018` (vendor ID: `0x20` = XMC, model ID: `0x70` = XM25QHxxC series, capacity:`0x18` = 16MB). 
+
+In **ESP-IDF v5.5**, the strict chip validation in `bootloader_flash.c` (`is_xmc_chip_strict()`) only checks for model IDs `0x40`, `0x41`, and `0x50`. Because `0x70` is missing, the device enters a boot loop regardless of whether XMC support is enabled or disabled.
+
+#### Solution
+1. Open `components/bootloader_support/bootloader_flash/src/bootloader_flash.c` inside your ESP-IDF installation directory.
+2. Add the `mfid == 0x70` check to `is_xmc_chip_strict()` after other `mfid == 0x..` checks:
+   ```c
+   } else if (mfid == 0x70) {
+       if (cpid >= 0x15 && cpid <= 0x20) {
+           matched = true;
+       }
+   }
+   ```
+3. Ensure `CONFIG_BOOTLOADER_FLASH_XMC_SUPPORT=y` is enabled in your `sdkconfig` / `sdkconfig.defaults`.
+4. Rebuild and flash the bootloader (`idf.py bootloader` followed by `idf.py bootloader-flash`).
+
+
+### 2. Flash Configuration & Partition Table (`with_ota.csv`)
+
+* **Flash Size & Speed:** Configure the flash size to match the board, e.g. configure`16MB` for a board with `N16R8`, mode to `DIO`, and SPI speed to `40MHz` in `sdkconfig.defaults`:
+  ```ini
+  CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+  CONFIG_ESPTOOLPY_FLASHMODE="dio"
+  CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+  CONFIG_ESPTOOLPY_FLASHFREQ="40m"
+  CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+  CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+  CONFIG_BOOTLOADER_FLASH_XMC_SUPPORT=y
+  ```
+* **Web UI Storage (`spiffs`):** The compiled Svelte web interface (`data/dist`) exceeds the default `128KB` (`0x20000`) allocation and triggers an `LFS_ERR_NOSPC` build error. Increase the `spiffs` partition in `with_ota.csv` to at least `512KB` (`0x80000`):
+  ```csv
+  # Name, Type, SubType, Offset, Size, Flags
+  nvs,data,nvs,,0x10000,,
+  otadata,data,ota,,0x2000,,
+  app0,app,ota_0,,0x1E0000,,
+  app1,app,ota_1,,0x1E0000,,
+  spiffs,data,spiffs,,0x80000,,
+  ```
+* **Build Prerequisites:** Ensure **Bun** is installed and symlinked into your system `PATH` (e.g., `/usr/local/bin/bun`) so CMake can bundle the web interface during the build process.
+
+
+### 3. Hardware Pinout (ESP32-S3 N16R8)
+
+> **Important:** Always enter the **GPIO number** (`IOxx`) in the web configuration, not the physical board pin number. Avoid **GPIO 19 & 20** (reserved for USB-JTAG) and **GPIO 26–37** (reserved for internal flash and Octal PSRAM).
+
+You may use the following GPIOs on your ESP32-S3 board in the web based startup configuration. The development board may also include a NeoPixel / WS2812B RGB-LED connected to GPIO 48.
+
+* **PN532 NFC Reader (SPI Mode):**
+  * `SS (SDA / CS)`: **GPIO 10**
+  * `MOSI`: **GPIO 11**
+  * `SCK`: **GPIO 12**
+  * `MISO`: **GPIO 13**
+  * *Note:* `RST` and `IRQ` remain unconnected. Set the DIP switches on the PN532 board to **SPI** (`1 = OFF`, `2 = ON`).
+* **Onboard RGB Status LED (XL-5050RGBC-WS2812B):**
+  * Configure under **Actions** as **Pixel** on **GPIO 48**.Keep color ordering as **GRB**. *(If the LED does not light up, check that the tiny `RGB` solder jumper next to the LED on the devboard is bridged).*
+
+
 ### Contributing
 
 Contributions are welcomed! Please see the [Contributing Guidelines](CONTRIBUTING.md) for details.
