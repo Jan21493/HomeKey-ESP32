@@ -1,11 +1,21 @@
+# OS/editor residue
+**/.DS_Store
+Thumbs.db
+*.swp
+
+# ESP-IDF generated configuration
+/sdkconfig
+/sdkconfig.old
+
+# IDE's
 .vscode/
 .idea/
 .zed/
 ./logs/
 .cache/
+.DS_Store
 compile_commands.json
 src/config.h
-sdkconfig*
 build/
 managed_components/
 .gemini/
