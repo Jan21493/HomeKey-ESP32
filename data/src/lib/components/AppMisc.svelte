@@ -797,6 +797,121 @@
 									/>
 								{/if}
 							</div>
+
+							<!-- MIFARE DESFire Section -->
+							<div class="space-y-4 border-t border-base-300 pt-4">
+								<div>
+									<h3 class="text-sm font-semibold">MIFARE DESFire EV1</h3>
+									<p class="text-xs text-base-content/60">Read a file from DESFire cards (e.g. with random UID) after authenticating with an application key. The file content is reported instead of the UID.</p>
+								</div>
+
+								<div class="flex items-center justify-between py-2 px-3 bg-base-100 rounded-lg">
+									<div>
+										<p class="text-sm font-medium">Enable DESFire File Reading</p>
+										<p class="text-xs text-base-content/60">Only used for non-HomeKey cards. Requires a device reboot.</p>
+									</div>
+									<input
+										type="checkbox"
+										bind:checked={miscConfig.desfireEnabled}
+										class="toggle toggle-primary toggle-sm"
+									/>
+								</div>
+
+								{#if miscConfig.desfireEnabled}
+									<div class="grid grid-cols-2 gap-4">
+										<div class="form-control">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label">
+												<span class="label-text text-xs">Application ID (AID, hex)</span>
+											</label>
+											<input
+												type="text"
+												maxlength="6"
+												pattern={'[0-9A-Fa-f]{6}'}
+												bind:value={miscConfig.desfireAid}
+												placeholder="F51230"
+												class="input input-sm input-bordered w-full font-mono"
+											/>
+										</div>
+										<div class="form-control">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label">
+												<span class="label-text text-xs">File Number</span>
+											</label>
+											<input
+												type="number"
+												min="0"
+												max="31"
+												bind:value={miscConfig.desfireFileNo}
+												class="input input-sm input-bordered w-full"
+											/>
+										</div>
+										<div class="form-control">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label">
+												<span class="label-text text-xs">Key Number</span>
+											</label>
+											<input
+												type="number"
+												min="0"
+												max="13"
+												bind:value={miscConfig.desfireKeyNo}
+												class="input input-sm input-bordered w-full"
+											/>
+										</div>
+										<div class="form-control">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label">
+												<span class="label-text text-xs">Key Type</span>
+											</label>
+											<select bind:value={miscConfig.desfireKeyType} class="select select-sm select-bordered w-full">
+												<option value={0}>AES-128</option>
+												<option value={1}>2K3DES / DES (16 bytes)</option>
+												<option value={2}>3K3DES (24 bytes)</option>
+											</select>
+										</div>
+										<div class="form-control">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label">
+												<span class="label-text text-xs">Communication Mode</span>
+											</label>
+											<select bind:value={miscConfig.desfireCommMode} class="select select-sm select-bordered w-full">
+												<option value={0}>Plain</option>
+												<option value={1}>MACed</option>
+												<option value={3}>Fully enciphered</option>
+											</select>
+										</div>
+										<div class="form-control">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label">
+												<span class="label-text text-xs">Read Length (bytes, 0 = whole file)</span>
+											</label>
+											<input
+												type="number"
+												min="0"
+												max="256"
+												bind:value={miscConfig.desfireReadLength}
+												class="input input-sm input-bordered w-full"
+											/>
+										</div>
+										<div class="form-control col-span-2">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label">
+												<span class="label-text text-xs">Key (hex, {miscConfig.desfireKeyType === 2 ? 48 : 32} characters)</span>
+											</label>
+											<input
+												type="password"
+												autocomplete="off"
+												maxlength="48"
+												bind:value={miscConfig.desfireKey}
+												placeholder="••••••••"
+												class="input input-sm input-bordered w-full font-mono"
+											/>
+											<p class="text-xs text-base-content/60 mt-1">Stored on the device and never shown again. Use HTTPS and Web Authentication to protect it.</p>
+										</div>
+									</div>
+								{/if}
+							</div>
 						</div>
 					{/if}
 				</div>

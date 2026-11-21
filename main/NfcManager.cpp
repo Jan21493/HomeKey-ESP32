@@ -1,4 +1,5 @@
 #include "NfcManager.hpp"
+#include "DesfireReader.hpp"
 #include "ReaderDataManager.hpp"
 #include "ddk/homekey/ProfileFactory.h"
 #include "ddk/session/AuthOutcome.h"
@@ -352,7 +353,9 @@ void NfcManager::handleTagPresence(const std::vector<uint8_t>& uid, const std::a
     } else {
         ESP_LOGI(TAG, "Not a HomeKey tag, or failed to select applet.");
         ESP_LOGD(TAG, "Passive target UID: %s (%zu)", fmt::format("{:02X}", fmt::join(uid, "")).c_str(), uid.size());
-        handleGenericTag(uid, atqa, sak);
+        if (!handleDesfireTag(atqa, sak)) {
+            handleGenericTag(uid, atqa, sak);
+        }
     }
 
     auto stopTime = std::chrono::high_resolution_clock::now();
@@ -482,6 +485,31 @@ void NfcManager::handleHomeKeyAuth(const std::vector<uint8_t>& select_response) 
  * into an NfcEvent payload, and publishes the serialized event to the NFC event
  * topic.
  */
+/**
+ * @brief Reads the configured DESFire file and publishes its content as the tag "UID".
+ *
+ * DESFire EV1 cards with random UID present a different UID on every tap, so the
+ * authenticated file content is used as the stable identifier instead.
+ * @return true if a DESFire file was read and published.
+ */
+bool NfcManager::handleDesfireTag(const std::array<uint8_t,2>& atqa, const uint8_t& sak) {
+    if (!m_desfireConfig || !DesfireReader::looksLikeDesfire(atqa, sak)) return false;
+    DesfireReader desfire(
+        [this](const std::vector<uint8_t>& send, std::vector<uint8_t>& recv) {
+            return m_reader && m_reader->exchangeApdu(send, recv, 500);
+        },
+        *m_desfireConfig);
+    auto data = desfire.readFile();
+    if (!data || data->empty()) {
+        ESP_LOGW(TAG, "DESFire file could not be read, falling back to UID.");
+        return false;
+    }
+    ESP_LOGI(TAG, "DESFire file read (%zu bytes).", data->size());
+    ESP_LOGD(TAG, "DESFire data: %s", fmt::format("{:02X}", fmt::join(*data, "")).c_str());
+    handleGenericTag(*data, atqa, sak);
+    return true;
+}
+
 void NfcManager::handleGenericTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak) {
     EventTagTap s{.uid = uid, .atqa = atqa, .sak = sak};
     std::vector<uint8_t> d;

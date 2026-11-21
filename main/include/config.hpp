@@ -220,6 +220,15 @@ namespace espConfig
     uint8_t keypadMinCodeLength = KEYPAD_MIN_CODE_LENGTH;
     uint8_t keypadMaxCodeLength = KEYPAD_MAX_CODE_LENGTH;
     uint8_t keypadMaxCodes = KEYPAD_MAX_CODES;
+    // MIFARE DESFire EV1: read one file after authenticating with an app key.
+    bool desfireEnabled = false;
+    std::string desfireAid = "000000";   // 6 hex chars, MSB first
+    uint8_t desfireFileNo = 0;
+    uint8_t desfireKeyNo = 0;
+    uint8_t desfireKeyType = 0;          // 0 = AES-128, 1 = 2K3DES/DES, 2 = 3K3DES
+    uint8_t desfireCommMode = 0;         // 0 = plain, 1 = MACed, 3 = fully enciphered
+    uint16_t desfireReadLength = 0;      // 0 = whole file (max 256 bytes)
+    std::string desfireKey;              // hex, 32 (AES/2K3DES) or 48 (3K3DES) chars
   };
   struct actions_config_t {
     enum colorMap

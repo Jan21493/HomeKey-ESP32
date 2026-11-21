@@ -11,6 +11,7 @@ Thumbs.db
 .vscode/
 .idea/
 .zed/
+**/.DS_Store
 ./logs/
 .cache/
 .DS_Store
