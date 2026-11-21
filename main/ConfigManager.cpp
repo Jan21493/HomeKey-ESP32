@@ -135,6 +135,14 @@ const ConfigManager::ConfigField ConfigManager::kConfigFields[ConfigManager::kFi
   F("misc", misc_config_t, keypadMinCodeLength, U8),
   F("misc", misc_config_t, keypadMaxCodeLength, U8),
   F("misc", misc_config_t, keypadMaxCodes, U8),
+  F("misc", misc_config_t, desfireEnabled, Bool),
+  F("misc", misc_config_t, desfireAid, Str),
+  F("misc", misc_config_t, desfireFileNo, U8),
+  F("misc", misc_config_t, desfireKeyNo, U8),
+  F("misc", misc_config_t, desfireKeyType, U8),
+  F("misc", misc_config_t, desfireCommMode, U8),
+  F("misc", misc_config_t, desfireReadLength, U16),
+  F("misc", misc_config_t, desfireKey, Str),
   // --- actions (30) ---
   F("actions", actions_config_t, nfcNeopixelPin, U8),
   F("actions", actions_config_t, neoPixelType, U8),
@@ -1122,8 +1130,8 @@ std::string ConfigManager::serializeToJson() {
     switch (f.type) {
     case FieldType::Str: {
       const auto* s = fieldPtr<std::string>(f);
-      if (strstr(key, "Password") || strstr(key, "Passwd")) {
-        cJSON_AddStringToObject(root.get(), key, "********");
+      if (strstr(key, "Password") || strstr(key, "Passwd") || strcmp(key, "desfireKey") == 0) {
+        cJSON_AddStringToObject(root.get(), key, s->empty() && strcmp(key, "desfireKey") == 0 ? "" : "********");
       } else {
         cJSON_AddStringToObject(root.get(), key, s->c_str());
       }

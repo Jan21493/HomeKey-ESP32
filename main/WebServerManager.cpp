@@ -1243,6 +1243,31 @@ bool WebServerManager::validateRequest(httpd_req_t *req, cJSON *currentData, cJS
         return false;
       }
     }
+    else if (keyStr == "desfireKey" || keyStr == "desfireAid") {
+      const std::string v = incomingValue->valuestring;
+      const bool hexOk = std::all_of(v.begin(), v.end(), [](unsigned char c) { return std::isxdigit(c); });
+      const bool lenOk = keyStr == "desfireAid" ? v.size() == 6
+                                                : (v.empty() || v.size() == 32 || v.size() == 48);
+      if (!hexOk || !lenOk) {
+        sendJsonError(req, keyStr == "desfireAid"
+                               ? "DESFire AID must be 6 hex characters."
+                               : "DESFire key must be 32 (AES/2K3DES) or 48 (3K3DES) hex characters.");
+        return false;
+      }
+    }
+    else if (keyStr == "desfireKeyType" || keyStr == "desfireCommMode" ||
+             keyStr == "desfireKeyNo" || keyStr == "desfireReadLength" || keyStr == "desfireFileNo") {
+      const int v = incomingValue->valueint;
+      const bool ok = keyStr == "desfireKeyType"    ? (v >= 0 && v <= 2)
+                    : keyStr == "desfireCommMode"   ? (v == 0 || v == 1 || v == 3)
+                    : keyStr == "desfireKeyNo"      ? (v >= 0 && v <= 13)
+                    : keyStr == "desfireFileNo"     ? (v >= 0 && v <= 31)
+                                                    : (v >= 0 && v <= 256);
+      if (!ok) {
+        sendJsonError(req, "Invalid value for \"" + keyStr + "\".");
+        return false;
+      }
+    }
     // Pin validation
     else if (str_ends_with(keyStr.c_str(), "Pin")) {
       // IRQ/VEN only exist on the PN7161 reader; for other reader types the

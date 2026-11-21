@@ -1,6 +1,7 @@
 .vscode/
 .idea/
 .zed/
+**/.DS_Store
 ./logs/
 .cache/
 compile_commands.json

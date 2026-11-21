@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <expected>
 #include <map>
+#include <optional>
+#include "DesfireReader.hpp"
 #include <memory>
 #include "app_event_loop.hpp"
 #include "NfcReader.hpp"
@@ -42,6 +44,8 @@ public:
      */
     ~NfcManager();
     bool begin();
+    /** Enable reading a MIFARE DESFire file for cards without HomeKey (call before begin()). */
+    void setDesfireConfig(std::optional<DesfireReader::Config> config) { m_desfireConfig = std::move(config); }
 
 private:
     std::atomic<bool> m_reconfigRequested{false};
@@ -61,6 +65,7 @@ private:
     void handleTagPresence(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak);
     void handleHomeKeyAuth(const std::vector<uint8_t>& select_response);
     void handleGenericTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak);
+    bool handleDesfireTag(const std::array<uint8_t,2>& atqa, const uint8_t& sak);
     void waitForTagRemoval();
 
     // --- Member Variables ---
@@ -73,6 +78,7 @@ private:
     NvsCredentialStore& m_readerDataManager;
     bool m_hkAuthPrecomputeEnabled = false;
     const bool m_nfcFastPollingEnabled;
+    std::optional<DesfireReader::Config> m_desfireConfig;
 
     TaskHandle_t m_pollingTaskHandle;
     TaskHandle_t m_retryTaskHandle;

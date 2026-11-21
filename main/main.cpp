@@ -216,6 +216,18 @@ void setup() {
                               miscConfig.nfcVenPin,
                               miscConfig.hkAuthPrecomputeEnabled,
                               miscConfig.nfcFastPollingEnabled);
+  if (miscConfig.desfireEnabled) {
+    auto desfireConfig = DesfireReader::makeConfig(miscConfig.desfireAid, miscConfig.desfireFileNo,
+                                                   miscConfig.desfireKeyNo, miscConfig.desfireKeyType,
+                                                   miscConfig.desfireCommMode, miscConfig.desfireReadLength,
+                                                   miscConfig.desfireKey);
+    if (desfireConfig) {
+      ESP_LOGI(TAG, "DESFire file reading enabled (AID %s, file %u).", miscConfig.desfireAid.c_str(), miscConfig.desfireFileNo);
+      nfcManager->setDesfireConfig(std::move(desfireConfig));
+    } else {
+      ESP_LOGE(TAG, "DESFire configuration invalid (AID/key length), feature disabled.");
+    }
+  }
   nfcManager->begin();
 
   webServerManager.setNfcManager(nfcManager.get());
