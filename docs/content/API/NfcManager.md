@@ -85,3 +85,9 @@ There is no separate retry task: reconnection happens inline within the polling 
 *   **`handleGenericTag`**: This method publishes the UID, ATQA, SAK, identified card and tag types, and optional authenticated DESFire file data in a `NFC_TAP_EVENT` via `AppEventLoop` with an `EventTagTap` structure.
 
 *   **`waitForTagRemoval`**: After a tag is handled, this method ensures that the tag is no longer in the reader's field before the manager resumes polling. This prevents the same tag from being processed multiple times. If the tag is not removed within a timeout, it will reset the reader's RF field to clear its state.
+
+For Type 2 tags such as NTAG213/215/216, `GetVersion` is the raw NFC-A command
+`60`, not an ISO-DEP APDU. The PN532 backend sends it using `InCommunicateThru`
+(`42`) because `InDataExchange` interprets `60` as a MIFARE authentication
+command. The normal eight-byte NTAG215 response is `00 04 04 02 01 00 11 03`.
+HomeKey and DESFire continue to use the ISO-DEP/APDU exchange path.
