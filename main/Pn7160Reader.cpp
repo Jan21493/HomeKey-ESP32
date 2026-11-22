@@ -121,6 +121,7 @@ bool Pn7160Reader::init() {
     m_fwMajor = fw_ver >> 8;
     m_fwMinor = fw_ver & 0x0f;
     m_currentProtocol = 0;
+    m_currentInterface = 0;
 
     ret = m_nci->start();
     if (ret != ESP_OK) {
@@ -148,6 +149,7 @@ void Pn7160Reader::stop() {
     m_fwMajor = 0;
     m_fwMinor = 0;
     m_currentProtocol = 0;
+    m_currentInterface = 0;
 }
 
 bool Pn7160Reader::isConnected() const {
@@ -286,6 +288,7 @@ bool Pn7160Reader::pollForTag(std::vector<uint8_t>& uid,
 
             uint8_t protocol = p[2];
             m_currentProtocol = protocol;
+            m_currentInterface = p[1];
 
             ESP_LOGI(TAG, "Tag detected! UID len=%u, ATQA=%02X%02X, SAK=%02X, Proto=0x%02X",
                       nfcidLen, atqa[0], atqa[1], sak, protocol);
@@ -359,6 +362,18 @@ bool Pn7160Reader::exchangeApdu(const std::vector<uint8_t>& send,
         return true;
     }
     return false;
+}
+
+bool Pn7160Reader::exchangeType2(const std::vector<uint8_t>& send,
+                                 std::vector<uint8_t>& recv,
+                                 uint32_t timeoutMs) {
+    recv.clear();
+    if (!m_nci || send.empty() || m_currentProtocol != nci::PROT_T2T ||
+        m_currentInterface != nci::INTF_FRAME) return false;
+    const auto rsp = m_nci->send_apdu_sync(send, timeoutMs);
+    if (!rsp || rsp->empty() || rsp->back() != nci::STATUS_OK) return false;
+    recv.assign(rsp->begin(), rsp->end() - 1);
+    return true;
 }
 
 bool Pn7160Reader::healthCheck() {

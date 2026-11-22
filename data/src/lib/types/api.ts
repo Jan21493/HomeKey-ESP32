@@ -207,7 +207,7 @@ export interface MiscConfig {
   keypadMaxCodeLength: number;
   /** Maximum number of stored access codes */
   keypadMaxCodes: number;
-  /** Read a MIFARE DESFire EV1 file for non-HomeKey cards */
+  /** Read a MIFARE DESFire file for non-HomeKey cards */
   desfireEnabled: boolean;
   /** DESFire application ID, 6 hex chars (MSB first) */
   desfireAid: string;
@@ -219,10 +219,14 @@ export interface MiscConfig {
   desfireKeyType: number;
   /** 0 = plain, 1 = MACed, 3 = fully enciphered */
   desfireCommMode: number;
-  /** Bytes to read, 0 = whole file (max 256) */
+  /** 1-256 bytes, or 0 for the whole file; the response limit is 1024 bytes */
   desfireReadLength: number;
-  /** DESFire key as hex string (masked as "********" when read back) */
+  /** DESFire key as hex string (masked with 32 or 48 stars when read back) */
   desfireKey: string;
+  /** JSON property for file data, distinct from reserved tag fields */
+  desfirePropertyName: string;
+  /** 0 = UTF-8, 1 = hex until zero, 2 = Latin-1, 3 = all hex bytes */
+  desfireDataFormat: number;
 }
 
 /**

@@ -133,7 +133,7 @@ void reset();
 
 ## Data Structures
 
-All event payloads are defined in `main/include/eventStructs.hpp` and serialized with [alpaca](https://github.com/p-ranav/alpaca) before publishing. The structs below reflect the current definitions.
+All event payloads are defined in `main/include/eventStructs.hpp` and serialized with [alpaca](https://github.com/p-ranav/alpaca) before publishing. Payloads up to 1536 bytes are accepted; larger payloads are rejected rather than truncated. The structs below reflect the current definitions.
 
 ### EventLockState
 
@@ -171,6 +171,13 @@ struct EventTagTap {
   std::vector<uint8_t> uid;
   std::array<uint8_t,2> atqa;
   uint8_t sak;
+  bool verified = false;
+  bool hasFileData = false;
+  std::vector<uint8_t> fileData;
+  std::string propertyName = "";
+  uint8_t dataFormat = 1;
+  std::string cardType = "Unknown";
+  std::string tagType = "unknown";
 };
 ```
 

@@ -42,6 +42,21 @@
 	// svelte-ignore state_referenced_locally
 	let nfcPresetsList = $state<NfcGpioPinsPreset>($state.snapshot(nfcPresets));
 
+	const desfireKeyLength = $derived(miscConfig.desfireKeyType === 2 ? 48 : 32);
+	const desfireKeyMasked = $derived(/^\*+$/.test(miscConfig.desfireKey));
+	const reservedProperties = new Set([
+		'uid', 'homekey', 'atqa', 'sak', 'readerId', 'verified',
+		'issuerId', 'endpointId', 'cardType', 'tagType', '__proto__', 'constructor', 'prototype'
+	]);
+	const propertyNameError = (name: string) =>
+		/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) && !reservedProperties.has(name)
+			? ''
+			: 'Use 1-64 letters, digits or underscores; start with a letter or underscore. Reserved JSON field names are not allowed.';
+	let propertyNameInput = $state<HTMLInputElement>();
+	$effect(() => {
+		propertyNameInput?.setCustomValidity(propertyNameError(miscConfig.desfirePropertyName));
+	});
+
 	const colorOptions = [
 		{ value: 0, label: 'Tan', class: 'bg-[#ddd5cc] text-[#3E2723]' },
 		{ value: 1, label: 'Gold', class: 'bg-[#e6d1a8] text-[#3E2723]' },
@@ -53,6 +68,18 @@
       e.preventDefault();
       try {
           if (!miscConfig || !misc) return;
+          if (miscConfig.desfireEnabled || miscConfig.desfirePropertyName !== misc.desfirePropertyName) {
+            const validationError = propertyNameError(miscConfig.desfirePropertyName);
+            if (validationError) throw new Error(validationError);
+          }
+          if (miscConfig.desfireEnabled &&
+              (miscConfig.desfireEnabled !== misc.desfireEnabled ||
+               miscConfig.desfireKeyType !== misc.desfireKeyType ||
+               miscConfig.desfireKey !== misc.desfireKey) &&
+              (miscConfig.desfireKey.length !== desfireKeyLength ||
+               (!desfireKeyMasked && !/^[0-9a-f]+$/i.test(miscConfig.desfireKey)))) {
+            throw new Error(`DESFire key must be ${desfireKeyLength} hex characters for the selected key type.`);
+          }
           
           // Take snapshots of both objects to strip Svelte proxies and break reference links
           const baseline = $state.snapshot(misc);
@@ -73,7 +100,7 @@
       } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           error = message;
-          alert(`Error saving config: {message}`);
+          alert(`Error saving config: ${message}`);
       }
   };
 
@@ -801,8 +828,8 @@
 							<!-- MIFARE DESFire Section -->
 							<div class="space-y-4 border-t border-base-300 pt-4">
 								<div>
-									<h3 class="text-sm font-semibold">MIFARE DESFire EV1</h3>
-									<p class="text-xs text-base-content/60">Read a file from DESFire cards (e.g. with random UID) after authenticating with an application key. The file content is reported instead of the UID.</p>
+									<h3 class="text-sm font-semibold">MIFARE DESFire</h3>
+									<p class="text-xs text-base-content/60">Read a file from DESFire cards. Supports decryption and random UIDs. AES-128 recommended.</p>
 								</div>
 
 								<div class="flex items-center justify-between py-2 px-3 bg-base-100 rounded-lg">
@@ -865,7 +892,7 @@
 												<span class="label-text text-xs">Key Type</span>
 											</label>
 											<select bind:value={miscConfig.desfireKeyType} class="select select-sm select-bordered w-full">
-												<option value={0}>AES-128</option>
+												<option value={0}>AES-128 (16 bytes, recommended)</option>
 												<option value={1}>2K3DES / DES (16 bytes)</option>
 												<option value={2}>3K3DES (24 bytes)</option>
 											</select>
@@ -893,6 +920,7 @@
 												bind:value={miscConfig.desfireReadLength}
 												class="input input-sm input-bordered w-full"
 											/>
+											<p class="text-xs text-base-content/60 mt-1">Choose 1-256 bytes, or 0 for the whole file. Responses over 1024 bytes, including encryption overhead, are rejected.</p>
 										</div>
 										<div class="form-control col-span-2">
 											<!-- svelte-ignore a11y_label_has_associated_control -->
@@ -900,14 +928,44 @@
 												<span class="label-text text-xs">Key (hex, {miscConfig.desfireKeyType === 2 ? 48 : 32} characters)</span>
 											</label>
 											<input
-												type="password"
+												type={desfireKeyMasked ? 'text' : 'password'}
 												autocomplete="off"
-												maxlength="48"
-												bind:value={miscConfig.desfireKey}
-												placeholder="••••••••"
+												maxlength={desfireKeyLength}
+												value={miscConfig.desfireKey}
+												oninput={(event) => { miscConfig.desfireKey = event.currentTarget.value; }}
+												onfocus={(event) => { if (desfireKeyMasked) event.currentTarget.select(); }}
+												placeholder={'*'.repeat(desfireKeyLength)}
 												class="input input-sm input-bordered w-full font-mono"
 											/>
 											<p class="text-xs text-base-content/60 mt-1">Stored on the device and never shown again. Use HTTPS and Web Authentication to protect it.</p>
+										</div>
+										<div class="form-control">
+											<label class="label" for="desfire-property-name">
+												<span class="label-text text-xs">Property name</span>
+											</label>
+											<input
+												id="desfire-property-name"
+												type="text"
+												required
+												maxlength="64"
+												pattern={'[A-Za-z_][A-Za-z0-9_]{0,63}'}
+												bind:value={miscConfig.desfirePropertyName}
+												bind:this={propertyNameInput}
+												class="input input-sm input-bordered w-full"
+											/>
+											<p class="text-xs text-base-content/60 mt-1">Key / property name in JSON object for file data</p>
+										</div>
+										<div class="form-control">
+											<label class="label" for="desfire-data-format">
+												<span class="label-text text-xs">Data format</span>
+											</label>
+											<select id="desfire-data-format" bind:value={miscConfig.desfireDataFormat} class="select select-sm select-bordered w-full">
+												<option value={2}>Text (ISO-8859-1 / Latin-1)</option>
+												<option value={0}>Text (UTF-8)</option>
+												<option value={1}>Hex bytes (until 0x0)</option>
+												<option value={3}>Hex bytes (including 0x0)</option>
+											</select>
+											<p class="text-xs text-base-content/60 mt-1">Text and hex until 0x0 end at the first null byte. Hex including 0x0 outputs all bytes read.</p>
 										</div>
 									</div>
 								{/if}

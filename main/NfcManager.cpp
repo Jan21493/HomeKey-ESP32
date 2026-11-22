@@ -343,7 +343,9 @@ void NfcManager::handleTagPresence(const std::vector<uint8_t>& uid, const std::a
     auto startTime = std::chrono::high_resolution_clock::now();
     uint8_t selectAppletCmd[] = { 0x00, 0xA4, 0x04, 0x00, 0x07, 0xA0, 0x00, 0x00, 0x08, 0x58, 0x01, 0x01, 0x00 };
     std::vector<uint8_t> response;
-    bool ok = m_reader->exchangeApdu(std::vector<uint8_t>(selectAppletCmd, selectAppletCmd + sizeof(selectAppletCmd)), response, 500);
+    const bool ok = (sak & 0x20) &&
+        m_reader->exchangeApdu(std::vector<uint8_t>(selectAppletCmd, selectAppletCmd + sizeof(selectAppletCmd)),
+                               response, 500);
 
     // Check for success SW1=0x90, SW2=0x00
     if (ok && response.size() >= 2 && response[response.size() - 2] == 0x90 && response[response.size() - 1] == 0x00) {
@@ -353,8 +355,20 @@ void NfcManager::handleTagPresence(const std::vector<uint8_t>& uid, const std::a
     } else {
         ESP_LOGI(TAG, "Not a HomeKey tag, or failed to select applet.");
         ESP_LOGD(TAG, "Passive target UID: %s (%zu)", fmt::format("{:02X}", fmt::join(uid, "")).c_str(), uid.size());
-        if (!handleDesfireTag(atqa, sak)) {
-            handleGenericTag(uid, atqa, sak);
+        const auto tagType = TagTypeIdentifier::identify(
+            uid.size(), atqa, sak,
+            [this](const std::vector<uint8_t>& send, std::vector<uint8_t>& recv) {
+                return m_reader->exchangeType2(send, recv, 100);
+            },
+            [this](const std::vector<uint8_t>& send, std::vector<uint8_t>& recv) {
+                return m_reader->exchangeApdu(send, recv, 500);
+            });
+        if (tagType.versionAttempted && !tagType.versionRead) {
+            ESP_LOGD(TAG, "GetVersion unavailable or invalid; using RF identification.");
+        }
+        ESP_LOGD(TAG, "Card type: %s, tag type: %s", tagType.cardType, tagType.tagType);
+        if (!handleDesfireTag(uid, atqa, sak, tagType)) {
+            handleGenericTag(uid, atqa, sak, tagType);
         }
     }
 
@@ -478,40 +492,50 @@ void NfcManager::handleHomeKeyAuth(const std::vector<uint8_t>& select_response) 
     authenticateCold();
 }
 
-/**
- * @brief Publish a TAG_TAP NFC event for a detected non-HomeKey (generic) tag.
- *
- * Constructs an EventTagTap containing the tag UID, ATQA, and SAK, serializes it
- * into an NfcEvent payload, and publishes the serialized event to the NFC event
- * topic.
- */
-/**
- * @brief Reads the configured DESFire file and publishes its content as the tag "UID".
- *
- * DESFire EV1 cards with random UID present a different UID on every tap, so the
- * authenticated file content is used as the stable identifier instead.
- * @return true if a DESFire file was read and published.
- */
-bool NfcManager::handleDesfireTag(const std::array<uint8_t,2>& atqa, const uint8_t& sak) {
+bool NfcManager::handleDesfireTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa,
+                                  const uint8_t& sak, const TagTypeIdentification& tagType) {
     if (!m_desfireConfig || !DesfireReader::looksLikeDesfire(atqa, sak)) return false;
+    if (uid.size() == 4) {
+        ESP_LOGI(TAG, "4-byte UID detected; attempting authenticated DESFire UID lookup.");
+    }
     DesfireReader desfire(
         [this](const std::vector<uint8_t>& send, std::vector<uint8_t>& recv) {
             return m_reader && m_reader->exchangeApdu(send, recv, 500);
         },
         *m_desfireConfig);
-    auto data = desfire.readFile();
-    if (!data || data->empty()) {
-        ESP_LOGW(TAG, "DESFire file could not be read, falling back to UID.");
+    auto result = desfire.readCard(uid);
+    if (!result.verified) {
+        ESP_LOGW(TAG, "DESFire authentication failed; publishing detected UID without verification.");
         return false;
     }
-    ESP_LOGI(TAG, "DESFire file read (%zu bytes).", data->size());
-    ESP_LOGD(TAG, "DESFire data: %s", fmt::format("{:02X}", fmt::join(*data, "")).c_str());
-    handleGenericTag(*data, atqa, sak);
+    ESP_LOGI(TAG, "DESFire key is valid.");
+    if (result.uid.empty()) {
+        ESP_LOGW(TAG, "Real DESFire UID unavailable; no tag event published.");
+        return true;
+    }
+    ESP_LOGI(TAG, "DESFire UID: %s", fmt::format("{:02X}", fmt::join(result.uid, "")).c_str());
+    if (result.fileData) {
+        ESP_LOGI(TAG, "DESFire file read (%zu bytes).", result.fileData->size());
+        const auto text = DesfireReader::formatFileData(*result.fileData, m_desfireConfig->dataFormat);
+        if (text) ESP_LOGD(TAG, "DESFire data: %s", text->c_str());
+        else ESP_LOGW(TAG, "DESFire data is invalid UTF-8 or has an invalid format; check the data format setting.");
+    } else {
+        ESP_LOGW(TAG, "DESFire file could not be read; publishing verified UID without file data.");
+    }
+    handleGenericTag(result.uid, atqa, sak, tagType, true, std::move(result.fileData));
     return true;
 }
 
-void NfcManager::handleGenericTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak) {
-    EventTagTap s{.uid = uid, .atqa = atqa, .sak = sak};
+void NfcManager::handleGenericTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa,
+                                const uint8_t& sak, const TagTypeIdentification& tagType,
+                                bool verified, std::optional<std::vector<uint8_t>> fileData) {
+    EventTagTap s{.uid = uid, .atqa = atqa, .sak = sak, .verified = verified,
+                  .hasFileData = fileData.has_value(), .fileData = fileData ? std::move(*fileData) : std::vector<uint8_t>{},
+                  .cardType = tagType.cardType, .tagType = tagType.tagType};
+    if (verified && m_desfireConfig) {
+        s.propertyName = m_desfireConfig->propertyName;
+        s.dataFormat = m_desfireConfig->dataFormat;
+    }
     std::vector<uint8_t> d;
     alpaca::serialize(s, d);
     NfcEvent event{.type=TAG_TAP, .data=d};

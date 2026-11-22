@@ -47,6 +47,9 @@ public:
     bool exchangeApdu(const std::vector<uint8_t>& send,
                       std::vector<uint8_t>& recv,
                       uint32_t timeoutMs) override;
+    bool exchangeType2(const std::vector<uint8_t>& send,
+                       std::vector<uint8_t>& recv,
+                       uint32_t timeoutMs) override;
     bool healthCheck() override;
     
 private:
@@ -64,6 +67,7 @@ private:
     uint8_t m_fwMajor = 0;
     uint8_t m_fwMinor = 0;
     uint8_t m_currentProtocol = 0;    // RF protocol of the active tag (nci::PROT_*)
+    uint8_t m_currentInterface = 0;   // RF interface of the active tag (nci::INTF_*)
     TickType_t m_lastActivation = 0;
 
     static constexpr uint32_t kPresenceCheckIntervalMs = 500;

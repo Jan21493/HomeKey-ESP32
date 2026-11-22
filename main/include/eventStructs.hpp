@@ -49,6 +49,13 @@ struct EventTagTap {
   std::vector<uint8_t> uid;
   std::array<uint8_t,2> atqa;
   uint8_t sak;
+  bool verified = false;
+  bool hasFileData = false;
+  std::vector<uint8_t> fileData;
+  std::string propertyName = "";
+  uint8_t dataFormat = 1;
+  std::string cardType = "Unknown";
+  std::string tagType = "unknown";
 };
 
 struct EventValueChanged {

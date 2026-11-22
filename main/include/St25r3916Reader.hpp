@@ -75,6 +75,9 @@ public:
     bool exchangeApdu(const std::vector<uint8_t>& send,
                       std::vector<uint8_t>& recv,
                       uint32_t timeoutMs) override;
+    bool exchangeType2(const std::vector<uint8_t>& send,
+                       std::vector<uint8_t>& recv,
+                       uint32_t timeoutMs) override;
     bool healthCheck() override;
 
     // ECP data is held by reference and re-read on every poll, so there is

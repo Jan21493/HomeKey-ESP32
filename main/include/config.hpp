@@ -227,8 +227,10 @@ namespace espConfig
     uint8_t desfireKeyNo = 0;
     uint8_t desfireKeyType = 0;          // 0 = AES-128, 1 = 2K3DES/DES, 2 = 3K3DES
     uint8_t desfireCommMode = 0;         // 0 = plain, 1 = MACed, 3 = fully enciphered
-    uint16_t desfireReadLength = 0;      // 0 = whole file (max 256 bytes)
+    uint16_t desfireReadLength = 0;      // 1-256 bytes, or 0 for the whole file
     std::string desfireKey;              // hex, 32 (AES/2K3DES) or 48 (3K3DES) chars
+    std::string desfirePropertyName = "data";
+    uint8_t desfireDataFormat = 1;        // 0 = UTF-8, 1 = hex until zero, 2 = Latin-1, 3 = all hex bytes
   };
   struct actions_config_t {
     enum colorMap

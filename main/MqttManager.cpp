@@ -1,6 +1,7 @@
 #include "fmt/ranges.h"
 #include "config.hpp"
 #include "MqttManager.hpp"
+#include "DesfireReader.hpp"
 #include "LockManager.hpp"
 #include "ConfigManager.hpp"
 #include "JsonGuard.hpp"
@@ -112,7 +113,7 @@ bool MqttManager::begin(std::string deviceID) {
         case TAG_TAP: {
           EventTagTap s = alpaca::deserialize<EventTagTap>(nfc_event.data, ec);
           if(!ec){
-            publishUidTap(s.uid, s.atqa, s.sak);
+            publishUidTap(s);
           } else {
             ESP_LOGE(TAG, "Failed to deserialize Tag event: %s", ec.message().c_str());
             return;
@@ -482,6 +483,8 @@ void MqttManager::publishHomeKeyTap(const std::vector<uint8_t>& issuerId, const 
         .addString("issuerId", fmt::format("{:02X}", fmt::join(issuerId, "")))
         .addString("endpointId", fmt::format("{:02X}", fmt::join(endpointId, "")))
         .addString("readerId", fmt::format("{:02X}", fmt::join(readerId, "")))
+        .addString("cardType", "Type4ATag")
+        .addString("tagType", "homekey")
         .addBool("homekey", true)
         .toStringUnformatted();
     publish(m_mqttConfig.hkTopic, payload);
@@ -494,22 +497,32 @@ void MqttManager::publishHomeKeyTap(const std::vector<uint8_t>& issuerId, const 
  * the tag UID, ATQA, and SAK as uppercase hex strings and a `homekey` flag set
  * to `false`, then publishes it to the manager's configured hkTopic.
  *
- * @param uid Byte vector of the tag UID to include in the payload.
- * @param atqa Byte vector of the tag ATQA to include in the payload.
- * @param sak Byte vector of the tag SAK to include in the payload.
+ * @param tag Tag identity and optional authenticated DESFire file data.
  *
  * If NFC tag publishing is disabled in the MQTT configuration, no publish is performed.
  */
-void MqttManager::publishUidTap(const std::vector<uint8_t>& uid, const std::array<uint8_t,2> &atqa, const uint8_t &sak) {
+void MqttManager::publishUidTap(const EventTagTap& tag) {
     if(!m_mqttConfig.nfcTagNoPublish){
-      std::string payload = JsonBuilder::object()
-          .addString("uid", fmt::format("{:02X}", fmt::join(uid, "")))
+      auto payload = JsonBuilder::object();
+      payload.addString("uid", fmt::format("{:02X}", fmt::join(tag.uid, "")))
           .addBool("homekey", false)
-          .addString("atqa", fmt::format("{:02X}", fmt::join(atqa, "")))
-          .addString("sak", fmt::format("{:02X}", sak))
+          .addString("atqa", fmt::format("{:02X}", fmt::join(tag.atqa, "")))
+          .addString("sak", fmt::format("{:02X}", tag.sak))
           .addString("readerId", this->deviceID)
-          .toStringUnformatted();
-      publish(m_mqttConfig.hkTopic, payload);
+          .addString("cardType", tag.cardType)
+          .addString("tagType", tag.tagType);
+      if (tag.verified) payload.addBool("verified", true);
+      if (tag.verified && tag.hasFileData) {
+        const auto text = DesfireReader::formatFileData(tag.fileData, tag.dataFormat);
+        if (!DesfireReader::isValidPropertyName(tag.propertyName)) {
+          ESP_LOGE(TAG, "DESFire file data omitted: invalid property name.");
+        } else if (!text) {
+          ESP_LOGE(TAG, "DESFire file data omitted: invalid UTF-8 or output format; check the data format setting.");
+        } else {
+          payload.addString(tag.propertyName, *text);
+        }
+      }
+      publish(m_mqttConfig.hkTopic, payload.toStringUnformatted());
     } else ESP_LOGW(TAG, "MQTT publishing of Tag UID not enabled, ignoring!");
 }
 
