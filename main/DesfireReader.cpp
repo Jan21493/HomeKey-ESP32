@@ -45,17 +45,21 @@ void shiftLeftOne(std::vector<uint8_t>& v) {
     carry = next;
   }
 }
+
 }  // namespace
 
 std::optional<DesfireReader::Config> DesfireReader::makeConfig(const std::string& aidHex, uint8_t fileNo,
                                                                uint8_t keyNo, uint8_t keyType,
                                                                uint8_t commMode, uint16_t readLength,
-                                                               const std::string& keyHex) {
+                                                               const std::string& keyHex,
+                                                               const std::string& propertyName, uint8_t dataFormat) {
   Config cfg;
   auto aid = parseHex(aidHex);
   auto key = parseHex(keyHex);
   if (!aid || aid->size() != 3 || !key) return std::nullopt;
   if (keyType > 2 || (commMode != 0 && commMode != 1 && commMode != 3)) return std::nullopt;
+  if (!isValidPropertyName(propertyName) || !isValidDataFormat(dataFormat) ||
+      fileNo > 31 || keyNo > 13 || readLength > 256) return std::nullopt;
   cfg.keyType = static_cast<KeyType>(keyType);
   const size_t expectedKeyLen = cfg.keyType == KeyType::TDES3K ? 24 : 16;
   if (key->size() != expectedKeyLen) return std::nullopt;
@@ -64,9 +68,25 @@ std::optional<DesfireReader::Config> DesfireReader::makeConfig(const std::string
   cfg.fileNo = fileNo;
   cfg.keyNo = keyNo;
   cfg.commMode = static_cast<CommMode>(commMode);
-  cfg.readLength = std::min<uint16_t>(readLength, 256);
+  cfg.readLength = readLength;
   cfg.key = std::move(*key);
+  cfg.propertyName = propertyName;
+  cfg.dataFormat = dataFormat;
   return cfg;
+}
+
+bool DesfireReader::isValidPropertyName(const std::string& name) {
+  const auto isLetter = [](char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+  };
+  if (name.empty() || name.size() > 64 || !isLetter(name.front()) ||
+      !std::all_of(name.begin(), name.end(), [&](char c) {
+        return isLetter(c) || (c >= '0' && c <= '9');
+      })) return false;
+  static constexpr std::array<const char*, 13> reserved = {
+      "uid", "homekey", "atqa", "sak", "readerId", "verified",
+      "issuerId", "endpointId", "cardType", "tagType", "__proto__", "constructor", "prototype"};
+  return std::find(reserved.begin(), reserved.end(), name) == reserved.end();
 }
 
 bool DesfireReader::looksLikeDesfire(const std::array<uint8_t, 2>& atqa, uint8_t sak) {
@@ -263,16 +283,44 @@ bool DesfireReader::authenticate() {
   return ok;
 }
 
-std::optional<std::vector<uint8_t>> DesfireReader::readFile() {
+DesfireReader::Result DesfireReader::readCard(const std::vector<uint8_t>& detectedUid) {
+  Result result{.uid = detectedUid};
   std::vector<uint8_t> resp;
   uint8_t status = 0;
   const std::vector<uint8_t> aid(m_cfg.aid.begin(), m_cfg.aid.end());
   if (!command(0x5A, aid, resp, status) || status != kStatusOk) {
     ESP_LOGW(TAG, "SelectApplication failed (status 0x%02X)", status);
+    return result;
+  }
+  if (!authenticate()) return result;
+  result.verified = true;
+  if (detectedUid.size() == 4) {
+    auto uid = getCardUid();
+    if (!uid) {
+      ESP_LOGW(TAG, "Authenticated, but real UID could not be read; skipping tag publication.");
+      result.uid.clear();
+      return result;
+    }
+    result.uid = std::move(*uid);
+  }
+  result.fileData = readFile();
+  return result;
+}
+
+std::optional<std::vector<uint8_t>> DesfireReader::getCardUid() {
+  cmac({0x51});
+  std::vector<uint8_t> resp;
+  uint8_t status = 0;
+  if (!command(0x51, {}, resp, status) || status != kStatusOk) {
+    ESP_LOGW(TAG, "GetCardUID failed (status 0x%02X)", status);
     return std::nullopt;
   }
-  if (!authenticate()) return std::nullopt;
+  return decryptResponse(std::move(resp), 7);
+}
 
+std::optional<std::vector<uint8_t>> DesfireReader::readFile() {
+  std::vector<uint8_t> resp;
+  uint8_t status = 0;
   const uint32_t len = m_cfg.readLength;
   const std::vector<uint8_t> params = {m_cfg.fileNo, 0x00, 0x00, 0x00,
                                        static_cast<uint8_t>(len), static_cast<uint8_t>(len >> 8), 0x00};
@@ -290,7 +338,10 @@ std::optional<std::vector<uint8_t>> DesfireReader::readFile() {
   }
 
   if (m_cfg.commMode == CommMode::Mac) {
-    if (resp.size() < 8) return std::nullopt;
+    if (resp.size() < 8) {
+      ESP_LOGW(TAG, "ReadData: missing MAC");
+      return std::nullopt;
+    }
     std::vector<uint8_t> data(resp.begin(), resp.end() - 8);
     std::vector<uint8_t> msg = data;
     msg.push_back(kStatusOk);
@@ -302,10 +353,14 @@ std::optional<std::vector<uint8_t>> DesfireReader::readFile() {
     return data;
   }
 
-  // Fully enciphered: data || CRC32(data || status) || zero padding
+  return decryptResponse(std::move(resp), len);
+}
+
+std::optional<std::vector<uint8_t>> DesfireReader::decryptResponse(std::vector<uint8_t> resp, uint32_t len) {
+  // Encrypted responses: data || CRC32(data || status) || zero padding.
   const size_t bs = blockSize();
   if (resp.empty() || resp.size() % bs != 0) {
-    ESP_LOGW(TAG, "ReadData: invalid encrypted length %zu", resp.size());
+    ESP_LOGW(TAG, "Invalid encrypted response length %zu", resp.size());
     return std::nullopt;
   }
   cbcDecrypt(resp);
@@ -330,7 +385,7 @@ std::optional<std::vector<uint8_t>> DesfireReader::readFile() {
     }
   }
   if (!dataLen) {
-    ESP_LOGW(TAG, "ReadData: CRC verification failed");
+    ESP_LOGW(TAG, "Encrypted response: CRC verification failed");
     return std::nullopt;
   }
   resp.resize(*dataLen);

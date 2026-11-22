@@ -76,12 +76,12 @@ There is no separate retry task: reconnection happens inline within the polling 
 
 ### Tag Handling
 
-*   **`handleTagPresence`**: This is the entry point for processing a detected tag. It first tries to select the HomeKey applet on the tag.
+*   **`handleTagPresence`**: This is the entry point for processing a detected tag. For ISO-DEP tags, it first tries to select the HomeKey applet.
     *   If successful, it proceeds to `handleHomeKeyAuth()`.
-    *   If it fails, it treats the tag as a generic one and calls `handleGenericTag()`.
+    *   Otherwise, it identifies the tag using its RF parameters and, where supported, `GetVersion`; it then attempts configured DESFire authentication or publishes a generic tag event.
 
 *   **`handleHomeKeyAuth`**: This method orchestrates the complex HomeKey authentication process using the DigitalDoorKey (DDK) library — it builds a `ddk::Session` (wrapping a `ddk::NfcChannel` backed by the reader's APDU exchange) and drives a `ddk::Profile` state machine through `validate_select` → `step` → `finalize`. Upon completion, it publishes a `NFC_TAP_EVENT` via `AppEventLoop` with the outcome (success or failure) and relevant identifiers in an `EventHKTap` structure (which carries the issuer, endpoint, and reader sub-identifier).
 
-*   **`handleGenericTag`**: This method is called for non-HomeKey tags. It reads the tag's unique identifiers (UID, ATQA, SAK) and publishes them in a `NFC_TAP_EVENT` via `AppEventLoop` with an `EventTagTap` structure.
+*   **`handleGenericTag`**: This method publishes the UID, ATQA, SAK, identified card and tag types, and optional authenticated DESFire file data in a `NFC_TAP_EVENT` via `AppEventLoop` with an `EventTagTap` structure.
 
 *   **`waitForTagRemoval`**: After a tag is handled, this method ensures that the tag is no longer in the reader's field before the manager resumes polling. This prevents the same tag from being processed multiple times. If the tag is not removed within a timeout, it will reset the reader's RF field to clear its state.

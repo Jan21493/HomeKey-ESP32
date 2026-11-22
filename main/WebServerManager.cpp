@@ -12,6 +12,7 @@
 #include "fmt/ranges.h"
 #include "WebServerManager.hpp"
 #include "ConfigManager.hpp"
+#include "DesfireReader.hpp"
 #include "automation/AutomationRegistry.hpp"
 #include "HomeSpan.h"
 #include "MqttManager.hpp"
@@ -1243,6 +1244,12 @@ bool WebServerManager::validateRequest(httpd_req_t *req, cJSON *currentData, cJS
         return false;
       }
     }
+    else if (keyStr == "desfirePropertyName") {
+      if (!DesfireReader::isValidPropertyName(incomingValue->valuestring)) {
+        sendJsonError(req, "Property name must be 1-64 letters, digits or underscores, start with a letter or underscore, and not be a reserved JSON field.");
+        return false;
+      }
+    }
     else if (keyStr == "desfireKey" || keyStr == "desfireAid") {
       const std::string v = incomingValue->valuestring;
       const bool hexOk = std::all_of(v.begin(), v.end(), [](unsigned char c) { return std::isxdigit(c); });
@@ -1256,14 +1263,16 @@ bool WebServerManager::validateRequest(httpd_req_t *req, cJSON *currentData, cJS
       }
     }
     else if (keyStr == "desfireKeyType" || keyStr == "desfireCommMode" ||
-             keyStr == "desfireKeyNo" || keyStr == "desfireReadLength" || keyStr == "desfireFileNo") {
+             keyStr == "desfireKeyNo" || keyStr == "desfireReadLength" || keyStr == "desfireFileNo" ||
+             keyStr == "desfireDataFormat") {
       const int v = incomingValue->valueint;
       const bool ok = keyStr == "desfireKeyType"    ? (v >= 0 && v <= 2)
                     : keyStr == "desfireCommMode"   ? (v == 0 || v == 1 || v == 3)
                     : keyStr == "desfireKeyNo"      ? (v >= 0 && v <= 13)
                     : keyStr == "desfireFileNo"     ? (v >= 0 && v <= 31)
+                    : keyStr == "desfireDataFormat" ? (v >= 0 && v <= 255 && DesfireReader::isValidDataFormat(static_cast<uint8_t>(v)))
                                                     : (v >= 0 && v <= 256);
-      if (!ok) {
+      if (!ok || incomingValue->valuedouble != v) {
         sendJsonError(req, "Invalid value for \"" + keyStr + "\".");
         return false;
       }
@@ -1391,7 +1400,25 @@ bool WebServerManager::validateRequest(httpd_req_t *req, cJSON *currentData, cJS
     
     it = it->next;
   }
-  
+
+  const cJSON* desfireEnabled = cJSON_GetObjectItem(obj, "desfireEnabled");
+  const cJSON* desfireKeyType = cJSON_GetObjectItem(obj, "desfireKeyType");
+  const cJSON* desfireKey = cJSON_GetObjectItem(obj, "desfireKey");
+  if ((desfireEnabled || desfireKeyType || desfireKey) &&
+      cJSON_GetObjectItem(currentData, "desfireEnabled")) {
+    const auto& misc = getInstance(req)->m_configManager.getConfig<espConfig::misc_config_t>();
+    const bool enabled = desfireEnabled ? cJSON_IsTrue(desfireEnabled) : misc.desfireEnabled;
+    const int keyType = desfireKeyType ? desfireKeyType->valueint : misc.desfireKeyType;
+    const std::string_view key = desfireKey ? std::string_view(desfireKey->valuestring)
+                                             : std::string_view(misc.desfireKey);
+    const size_t expectedLength = keyType == 2 ? 48 : 32;
+    if (enabled && (key.size() != expectedLength ||
+                    !std::all_of(key.begin(), key.end(), [](unsigned char c) { return std::isxdigit(c); }))) {
+      sendJsonError(req, "DESFire key must match the selected key type (32 or 48 hex characters).");
+      return false;
+    }
+  }
+
   return true;
 }
 

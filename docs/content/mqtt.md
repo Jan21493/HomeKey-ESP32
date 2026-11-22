@@ -100,12 +100,14 @@ If a HomeKey is used:
   "endpointId": "000000000000",
   "homekey": true,
   "issuerId": "0000000000000000",
-  "readerId": "0000000000000000"
+  "readerId": "0000000000000000",
+  "cardType": "Type4ATag",
+  "tagType": "homekey"
 }
 ```
 
-*   `endpointId`: A unique identifier for the Apple device (iPhone, Apple Watch) that was used to authenticate.
-*   `issuerId`: A unique identifier for the Apple ID of the user who authenticated.
+*   `endpointId`: The identifier of the authenticated HomeKey endpoint. It can be associated with a person externally but does not directly contain a name or user account.
+*   `issuerId`: The identifier of the HomeKey issuer, derived from the paired HomeKit controller's public key; it is not an Apple ID.
 *   `readerId`: The unique identifier of the HomeKey reader that processed the authentication.
 
 ### 4.2. Generic NFC Tag Data
@@ -118,7 +120,9 @@ If a generic NFC tag (not a HomeKey) is scanned:
   "homekey": false,
   "sak": "08",
   "uid": "00000000",
-  "readerId": "A1B2C3D4E5F6"
+  "readerId": "A1B2C3D4E5F6",
+  "cardType": "Type2Tag",
+  "tagType": "mifare_classic_1k"
 }
 ```
 
@@ -126,6 +130,71 @@ If a generic NFC tag (not a HomeKey) is scanned:
 *   `sak`: The SAK of the NFC tag.
 *   `uid`: The UID of the NFC tag.
 *   `readerId`: The HomeKey reader's accessory ID (a 12-character hex string, unique per device and persisted in NVS).
+*   `cardType`: The NFC tag class, such as `Type2Tag`, `Type4ATag`, or `Unknown`.
+*   `tagType`: The identified product or family, such as `ntag_215`, `mifare_classic_1k`, `mifare_desfire_ev1`, or `unknown`.
+
+The tag class and product are identified from SAK, ATQA and the detected UID
+length, and, where supported, from `GetVersion`. `unknown` is used when the
+product cannot be determined. The `Type2Tag` label also covers Classic-style
+tags, following the RF classification used here; it does not assert NFC Forum
+Type 2 compliance. Classic and Plus cards can share RF signatures, so those
+labels are indications rather than proof of a particular chip or identity.
+The readers currently discover NFC-A tags; other RF technologies such as
+ISO 15693 are not discovered by this feature.
+
+### 4.3. Authenticated DESFire Data
+
+With DESFire file reading enabled, `uid` is the card UID, not its file content.
+After successful key authentication, a detected 4-byte random UID is resolved
+with the encrypted DESFire `GetCardUID` command. The log reports the real UID
+and `DESFire key is valid.` If this lookup fails, no tag event is published
+rather than reporting a random UID as the real identity.
+
+The System > Security settings select a **Property name** and **Data format**
+for the file content. The key must contain 32 hexadecimal characters for
+AES-128 or 2K3DES, or 48 for 3K3DES. Replace the saved key when switching to a
+type with a different required length. For example, with property `cardData`
+and UTF-8 text output:
+
+```json
+{
+  "uid": "04112233445566",
+  "homekey": false,
+  "atqa": "0304",
+  "sak": "20",
+  "readerId": "A1B2C3D4E5F6",
+  "cardType": "Type4ATag",
+  "tagType": "mifare_desfire_ev1",
+  "verified": true,
+  "cardData": "Example"
+}
+```
+
+`verified: true` means the configured DESFire key successfully authenticated.
+It does not mean the file contains a verified person's identity. If reading
+the file fails, the verified UID is still published without the file property.
+Failed key authentication uses the normal detected-UID payload without
+`verified` or file data.
+
+Read Length accepts 1-256 bytes, or 0 to read the whole file. Responses over
+1024 bytes, including encryption or MAC overhead, are rejected rather than
+truncated.
+
+The first null byte and all following bytes are omitted in both text formats
+and in **Hex bytes (until 0x0)**. **Text (ISO-8859-1 / Latin-1)** converts
+each byte to UTF-8 for JSON; **Text (UTF-8)** validates the bytes as UTF-8. If
+the UTF-8 text is invalid, an error is logged and the file property is omitted.
+Both hex formats output uppercase hex without a `0x` prefix; **Hex bytes
+(including 0x0)** includes every byte read, including null bytes.
+
+Property names must contain 1-64 ASCII letters, digits or underscores, starting
+with a letter or underscore. Existing payload fields (`uid`, `homekey`, `atqa`,
+`sak`, `readerId`, `verified`, `issuerId`, `endpointId`, `cardType`, `tagType`) and the names
+`__proto__`, `constructor`, and `prototype` are reserved.
+The default property is `data` with Hex bytes (until 0x0) output.
+Existing automations that matched file content through `uid` must be updated:
+`uid` now identifies the card, and MQTT file-content filters must use the
+configured property instead.
 
 ## 5. Home Assistant Integration: Making Friends with Your Hub
 

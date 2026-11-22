@@ -88,12 +88,9 @@ private:
 
     /**
       * @brief Publishes a generic (non-HomeKey) NFC tag scan event.
-      * @param uid Pointer to the UID byte array.
-      * @param uidLen Length of the UID.
-      * @param atqa Pointer to the ATQA byte array (can be null).
-      * @param sak Pointer to the SAK byte array (can be null).
+      * @param tag Tag identity and optional authenticated DESFire file data.
       */
-    void publishUidTap(const std::vector<uint8_t>& uid, const std::array<uint8_t,2> &atqa, const uint8_t &sak);
+    void publishUidTap(const EventTagTap& tag);
     // --- Event Handling ---
     static void mqttEventHandler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data);
     void onMqttEvent(esp_event_base_t base, int32_t event_id, void* event_data);
@@ -128,4 +125,3 @@ private:
     MqttErrorCode m_lastErrorCode = MqttErrorCode::NONE;
     std::string m_lastErrorMessage;
 };
-

@@ -150,6 +150,20 @@ bool Pn532Reader::exchangeApdu(const std::vector<uint8_t>& send,
     return true;
 }
 
+bool Pn532Reader::exchangeType2(const std::vector<uint8_t>& send,
+                                std::vector<uint8_t>& recv,
+                                uint32_t timeoutMs) {
+    recv.clear();
+    if (!m_frontend || send.empty() || send.size() > 255) return false;
+    const pn532::Status status = m_frontend->InDataExchange(send, recv, timeoutMs);
+    if (status != pn532::Status::SUCCESS || recv.size() < 2 || (recv[1] & 0x3F) != 0) {
+        recv.clear();
+        return false;
+    }
+    recv.erase(recv.begin(), recv.begin() + 2);
+    return true;
+}
+
 bool Pn532Reader::healthCheck() {
     if (!m_frontend) {
         m_connected = false;

@@ -19,6 +19,7 @@ class DesfireReader {
 public:
   enum class KeyType : uint8_t { AES128 = 0, TDES2K = 1, TDES3K = 2 };
   enum class CommMode : uint8_t { Plain = 0, Mac = 1, Full = 3 };
+  enum class DataFormat : uint8_t { Utf8 = 0, HexUntilZero = 1, Latin1 = 2, HexAll = 3 };
 
   struct Config {
     std::array<uint8_t, 3> aid{};   // little-endian, as sent on the wire
@@ -28,6 +29,14 @@ public:
     CommMode commMode = CommMode::Plain;
     uint16_t readLength = 0;        // 0 = whole file
     std::vector<uint8_t> key;       // 16 or 24 bytes
+    std::string propertyName = "data";
+    uint8_t dataFormat = 1;        // see DataFormat
+  };
+
+  struct Result {
+    std::vector<uint8_t> uid;
+    bool verified = false;
+    std::optional<std::vector<uint8_t>> fileData;
   };
 
   using Transceive = std::function<bool(const std::vector<uint8_t>& send, std::vector<uint8_t>& recv)>;
@@ -35,7 +44,12 @@ public:
   /** Build a Config from the textual web settings. Returns nullopt if invalid. */
   static std::optional<Config> makeConfig(const std::string& aidHex, uint8_t fileNo, uint8_t keyNo,
                                           uint8_t keyType, uint8_t commMode, uint16_t readLength,
-                                          const std::string& keyHex);
+                                          const std::string& keyHex,
+                                          const std::string& propertyName = "data", uint8_t dataFormat = 1);
+
+  static bool isValidPropertyName(const std::string& name);
+  static bool isValidDataFormat(uint8_t format);
+  static std::optional<std::string> formatFileData(const std::vector<uint8_t>& data, uint8_t format);
 
   /** DESFire (EV1/EV2/EV3) answers anticollision with SAK bit 0x20 (ISO 14443-4). */
   static bool looksLikeDesfire(const std::array<uint8_t, 2>& atqa, uint8_t sak);
@@ -43,12 +57,15 @@ public:
   DesfireReader(Transceive transceive, const Config& config);
   ~DesfireReader();
 
-  /** Runs select → authenticate → read. Returns the file content on success. */
-  std::optional<std::vector<uint8_t>> readFile();
+  /** Authenticates, resolves a 4-byte random UID and reads the configured file. */
+  Result readCard(const std::vector<uint8_t>& detectedUid);
 
 private:
   bool command(uint8_t ins, const std::vector<uint8_t>& data, std::vector<uint8_t>& out, uint8_t& status);
   bool authenticate();
+  std::optional<std::vector<uint8_t>> readFile();
+  std::optional<std::vector<uint8_t>> getCardUid();
+  std::optional<std::vector<uint8_t>> decryptResponse(std::vector<uint8_t> response, uint32_t length);
   size_t blockSize() const { return m_cfg.keyType == KeyType::AES128 ? 16 : 8; }
 
   bool setKey(const std::vector<uint8_t>& key);

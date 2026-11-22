@@ -220,12 +220,13 @@ void setup() {
     auto desfireConfig = DesfireReader::makeConfig(miscConfig.desfireAid, miscConfig.desfireFileNo,
                                                    miscConfig.desfireKeyNo, miscConfig.desfireKeyType,
                                                    miscConfig.desfireCommMode, miscConfig.desfireReadLength,
-                                                   miscConfig.desfireKey);
+                                                   miscConfig.desfireKey, miscConfig.desfirePropertyName,
+                                                   miscConfig.desfireDataFormat);
     if (desfireConfig) {
       ESP_LOGI(TAG, "DESFire file reading enabled (AID %s, file %u).", miscConfig.desfireAid.c_str(), miscConfig.desfireFileNo);
       nfcManager->setDesfireConfig(std::move(desfireConfig));
     } else {
-      ESP_LOGE(TAG, "DESFire configuration invalid (AID/key length), feature disabled.");
+      ESP_LOGE(TAG, "DESFire configuration invalid (card settings/key/property name), feature disabled.");
     }
   }
   nfcManager->begin();

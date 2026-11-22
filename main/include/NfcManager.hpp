@@ -9,6 +9,7 @@
 #include <map>
 #include <optional>
 #include "DesfireReader.hpp"
+#include "TagTypeIdentifier.hpp"
 #include <memory>
 #include "app_event_loop.hpp"
 #include "NfcReader.hpp"
@@ -64,8 +65,11 @@ private:
     bool initializeReader();
     void handleTagPresence(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak);
     void handleHomeKeyAuth(const std::vector<uint8_t>& select_response);
-    void handleGenericTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak);
-    bool handleDesfireTag(const std::array<uint8_t,2>& atqa, const uint8_t& sak);
+    void handleGenericTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak,
+                          const TagTypeIdentification& tagType,
+                          bool verified = false, std::optional<std::vector<uint8_t>> fileData = std::nullopt);
+    bool handleDesfireTag(const std::vector<uint8_t>& uid, const std::array<uint8_t,2>& atqa, const uint8_t& sak,
+                          const TagTypeIdentification& tagType);
     void waitForTagRemoval();
 
     // --- Member Variables ---

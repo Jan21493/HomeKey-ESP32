@@ -7,8 +7,7 @@
 /**
  * @brief Abstract interface for NFC reader implementations.
  *
- * Provides a unified API over the PN532 (command/response) and PN7160 (NCI/event-driven)
- * protocols so that NfcManager can operate generically.
+ * Provides a unified API over the PN532, PN7160 and ST25R3916 reader protocols.
  */
 class INfcReader {
 public:
@@ -95,6 +94,14 @@ public:
     virtual bool exchangeApdu(const std::vector<uint8_t>& send,
                               std::vector<uint8_t>& recv,
                               uint32_t timeoutMs) = 0;
+
+    /**
+     * @brief Exchange a raw NFC-A Type 2 command without ISO-DEP framing.
+     * The reader handles CRC and removes any transport-specific status bytes.
+     */
+    virtual bool exchangeType2(const std::vector<uint8_t>& send,
+                               std::vector<uint8_t>& recv,
+                               uint32_t timeoutMs) = 0;
 
     /**
      * @brief Perform a lightweight health check (e.g. register write/read).

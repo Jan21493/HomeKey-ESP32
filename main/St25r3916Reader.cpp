@@ -686,6 +686,18 @@ void St25r3916Reader::releaseTag() {
     }
 }
 
+bool St25r3916Reader::exchangeType2(const std::vector<uint8_t>& send,
+                                    std::vector<uint8_t>& recv,
+                                    uint32_t timeoutMs) {
+    recv.clear();
+    if (!m_connected || !m_fieldUp || m_isodepActive || send.empty() || send.size() > 255) return false;
+    uint8_t rx[32];
+    const RxResult result = transceive(send.data(), send.size(), rx, sizeof(rx), true, true, timeoutMs);
+    if (!result.ok) return false;
+    recv.assign(rx, rx + result.len);
+    return true;
+}
+
 // ---------------------------------------------------------------- ISO-DEP
 
 bool St25r3916Reader::exchangeApdu(const std::vector<uint8_t>& send,

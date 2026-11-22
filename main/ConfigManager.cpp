@@ -143,6 +143,8 @@ const ConfigManager::ConfigField ConfigManager::kConfigFields[ConfigManager::kFi
   F("misc", misc_config_t, desfireCommMode, U8),
   F("misc", misc_config_t, desfireReadLength, U16),
   F("misc", misc_config_t, desfireKey, Str),
+  F("misc", misc_config_t, desfirePropertyName, Str),
+  F("misc", misc_config_t, desfireDataFormat, U8),
   // --- actions (30) ---
   F("actions", actions_config_t, nfcNeopixelPin, U8),
   F("actions", actions_config_t, neoPixelType, U8),
@@ -1130,8 +1132,11 @@ std::string ConfigManager::serializeToJson() {
     switch (f.type) {
     case FieldType::Str: {
       const auto* s = fieldPtr<std::string>(f);
-      if (strstr(key, "Password") || strstr(key, "Passwd") || strcmp(key, "desfireKey") == 0) {
-        cJSON_AddStringToObject(root.get(), key, s->empty() && strcmp(key, "desfireKey") == 0 ? "" : "********");
+      if (strcmp(key, "desfireKey") == 0) {
+        const std::string masked(s->size(), '*');
+        cJSON_AddStringToObject(root.get(), key, masked.c_str());
+      } else if (strstr(key, "Password") || strstr(key, "Passwd")) {
+        cJSON_AddStringToObject(root.get(), key, "********");
       } else {
         cJSON_AddStringToObject(root.get(), key, s->c_str());
       }

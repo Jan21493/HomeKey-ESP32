@@ -44,6 +44,9 @@ public:
     bool exchangeApdu(const std::vector<uint8_t>& send,
                       std::vector<uint8_t>& recv,
                       uint32_t timeoutMs) override;
+    bool exchangeType2(const std::vector<uint8_t>& send,
+                       std::vector<uint8_t>& recv,
+                       uint32_t timeoutMs) override;
     bool healthCheck() override;
     bool updateECP() override { return true;};
 private:
