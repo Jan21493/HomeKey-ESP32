@@ -928,14 +928,14 @@
 												<span class="label-text text-xs">Key (hex, {miscConfig.desfireKeyType === 2 ? 48 : 32} characters)</span>
 											</label>
 											<input
-												type={desfireKeyMasked ? 'text' : 'password'}
+												type="password"
 												autocomplete="off"
 												maxlength={desfireKeyLength}
 												value={miscConfig.desfireKey}
 												oninput={(event) => { miscConfig.desfireKey = event.currentTarget.value; }}
 												onfocus={(event) => { if (desfireKeyMasked) event.currentTarget.select(); }}
-												placeholder={'*'.repeat(desfireKeyLength)}
-												class="input input-sm input-bordered w-full font-mono"
+												placeholder="Enter key in hex"
+												class="input input-sm input-bordered w-full"
 											/>
 											<p class="text-xs text-base-content/60 mt-1">Stored on the device and never shown again. Use HTTPS and Web Authentication to protect it.</p>
 										</div>

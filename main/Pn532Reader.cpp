@@ -154,13 +154,30 @@ bool Pn532Reader::exchangeType2(const std::vector<uint8_t>& send,
                                 std::vector<uint8_t>& recv,
                                 uint32_t timeoutMs) {
     recv.clear();
-    if (!m_frontend || send.empty() || send.size() > 255) return false;
-    const pn532::Status status = m_frontend->InDataExchange(send, recv, timeoutMs);
-    if (status != pn532::Status::SUCCESS || recv.size() < 2 || (recv[1] & 0x3F) != 0) {
+    if (!m_frontend || send.empty() || send.size() > 252 || timeoutMs > UINT16_MAX) {
+        ESP_LOGE(TAG, "Invalid Type 2 exchange request.");
+        return false;
+    }
+    // InDataExchange interprets 0x60 as MIFARE authentication, not GET_VERSION.
+    const pn532::Status status = m_frontend->InCommunicateThru(send, recv, timeoutMs);
+    if (status != pn532::Status::SUCCESS) {
+        ESP_LOGD(TAG, "Type 2 transport failed (status=%u).", static_cast<unsigned>(status));
+        recv.clear();
+        return false;
+    }
+    if (recv.size() < 2 || recv[0] != 0x43) {
+        ESP_LOGW(TAG, "Invalid PN532 Type 2 response (%zu bytes).", recv.size());
+        recv.clear();
+        return false;
+    }
+    if (recv[1] != 0x00) {
+        ESP_LOGD(TAG, "Type 2 command failed (PN532 status=0x%02X).", recv[1]);
         recv.clear();
         return false;
     }
     recv.erase(recv.begin(), recv.begin() + 2);
+    ESP_LOGD(TAG, "Type 2 response (%zu bytes):", recv.size());
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, recv.data(), recv.size(), ESP_LOG_DEBUG);
     return true;
 }
 
